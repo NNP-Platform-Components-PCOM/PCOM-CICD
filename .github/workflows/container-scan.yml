@@ -75,7 +75,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Trivy scan (SARIF)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ inputs.scan-target }}
           format: sarif
@@ -85,7 +85,7 @@ jobs:
           vuln-type: os,library
 
       - name: Trivy scan (table gate)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ inputs.scan-target }}
           format: table
@@ -95,7 +95,7 @@ jobs:
 
       - name: Grype scan
         id: grype
-        uses: anchore/scan-action@v6
+        uses: anchore/scan-action@v7
         with:
           image: ${{ inputs.scan-target }}
           severity-cutoff: high
