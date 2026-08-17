@@ -17,14 +17,17 @@ without pushing (the image is scanned from an exported tarball).
 
 Images are published to `docker.io/nubons/<image-name>`.
 
-## Required secrets
+## Required secret
 
-The org must provide two Actions secrets (visible to these repositories):
+The org must provide one Actions secret (visible to these repositories):
 
 | Secret | Purpose |
 |--------|---------|
-| `DOCKERHUB_USERNAME` | Docker Hub account/namespace. |
 | `DOCKERHUB_TOKEN` | Docker Hub access token with Read/Write. |
+
+The Docker Hub account/namespace is the non-secret `namespace` input (default
+`nubons`), also used as the login username — it is not a secret because it
+appears in every public image path.
 
 ## Usage
 

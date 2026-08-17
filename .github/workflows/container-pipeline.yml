@@ -64,9 +64,6 @@ on:
         default: true
 
     secrets:
-      DOCKERHUB_USERNAME:
-        description: 'Docker Hub username.'
-        required: true
       DOCKERHUB_TOKEN:
         description: 'Docker Hub access token (read/write).'
         required: true
@@ -90,7 +87,6 @@ jobs:
       push: ${{ github.event_name != 'pull_request' }}
       sign: ${{ inputs.sign }}
     secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   scan:
@@ -102,11 +98,11 @@ jobs:
     with:
       scan-target: ${{ needs.build.outputs.scan-target }}
       registry: ${{ inputs.registry }}
+      namespace: ${{ inputs.namespace }}
       image-artifact: ${{ needs.build.outputs.image-artifact }}
       severity: ${{ inputs.severity }}
       ignore-unfixed: ${{ inputs.ignore-unfixed }}
       fail-on-findings: ${{ inputs.fail-on-findings }}
       upload-sarif: true
     secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
