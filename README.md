@@ -9,11 +9,22 @@ build logic, so the whole set of images shares one audited build/scan pipeline.
 | Workflow | Purpose |
 |----------|---------|
 | `container-pipeline.yml` | End-to-end entry point: build & publish, then scan. Image repos call this. |
-| `container-build.yml` | Build with Buildx, publish multi-arch to GHCR, sign keyless (cosign / OIDC), attach SBOM + provenance. |
+| `container-build.yml` | Build with Buildx, publish to Docker Hub, sign keyless (cosign / OIDC), attach SBOM + provenance. |
 | `container-scan.yml` | Scan with Trivy and Grype, publish SARIF to the Security tab. |
 
 Publishing happens on every event except pull requests, which build and scan
 without pushing (the image is scanned from an exported tarball).
+
+Images are published to `docker.io/nubons/<image-name>`.
+
+## Required secrets
+
+The org must provide two Actions secrets (visible to these repositories):
+
+| Secret | Purpose |
+|--------|---------|
+| `DOCKERHUB_USERNAME` | Docker Hub account/namespace. |
+| `DOCKERHUB_TOKEN` | Docker Hub access token with Read/Write. |
 
 ## Usage
 
@@ -34,13 +45,13 @@ on:
 
 permissions:
   contents: read
-  packages: write
   id-token: write        # cosign keyless signing
   security-events: write # SARIF upload
 
 jobs:
   pipeline:
     uses: NNP-Platform-Components-PCOM/PCOM-CICD/.github/workflows/container-pipeline.yml@main
+    secrets: inherit
     with:
       image-name: pcom-brc-ubuntu
       image-version: "22.04-v1"
@@ -48,12 +59,17 @@ jobs:
         os_ver=jammy
 ```
 
+`secrets: inherit` passes `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` through to the
+pipeline.
+
 ### Inputs
 
 | Input | Default | Notes |
 |-------|---------|-------|
-| `image-name` | — (required) | Published as `ghcr.io/<org>/<image-name>`. |
+| `image-name` | — (required) | Published as `docker.io/<namespace>/<image-name>`. |
 | `image-version` | `""` | Primary human-readable tag. `latest` and `sha-<short>` are always added. |
+| `registry` | `docker.io` | Target registry. |
+| `namespace` | `nubons` | Registry namespace / account. |
 | `context` | `.` | Docker build context. |
 | `dockerfile` | `./Dockerfile` | Path to the Dockerfile. |
 | `platforms` | `linux/amd64,linux/arm64` | Published architectures. |
@@ -63,5 +79,4 @@ jobs:
 | `fail-on-findings` | `false` | Fail the run on matching vulnerabilities. |
 | `sign` | `true` | Sign published images with cosign. |
 
-No registry secrets are required: publishing uses the built-in `GITHUB_TOKEN`
-and signing uses GitHub's OIDC identity.
+Signing uses GitHub's OIDC identity (cosign keyless); no signing keys to manage.

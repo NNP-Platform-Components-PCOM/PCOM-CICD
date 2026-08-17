@@ -9,7 +9,7 @@ on:
   workflow_call:
     inputs:
       image-name:
-        description: 'Image repository name (published under the org namespace).'
+        description: 'Image repository name (published under the registry namespace).'
         required: true
         type: string
       image-version:
@@ -36,7 +36,11 @@ on:
       registry:
         required: false
         type: string
-        default: ghcr.io
+        default: docker.io
+      namespace:
+        required: false
+        type: string
+        default: nubons
       runner:
         required: false
         type: string
@@ -59,17 +63,25 @@ on:
         type: boolean
         default: true
 
+    secrets:
+      DOCKERHUB_USERNAME:
+        description: 'Docker Hub username.'
+        required: true
+      DOCKERHUB_TOKEN:
+        description: 'Docker Hub access token (read/write).'
+        required: true
+
 jobs:
   build:
     permissions:
       contents: read
-      packages: write
       id-token: write
     uses: ./.github/workflows/container-build.yml
     with:
       runner: ${{ inputs.runner }}
       image-name: ${{ inputs.image-name }}
       registry: ${{ inputs.registry }}
+      namespace: ${{ inputs.namespace }}
       context: ${{ inputs.context }}
       dockerfile: ${{ inputs.dockerfile }}
       platforms: ${{ inputs.platforms }}
@@ -77,12 +89,14 @@ jobs:
       build-args: ${{ inputs.build-args }}
       push: ${{ github.event_name != 'pull_request' }}
       sign: ${{ inputs.sign }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   scan:
     needs: build
     permissions:
       contents: read
-      packages: read
       security-events: write
     uses: ./.github/workflows/container-scan.yml
     with:
@@ -93,3 +107,6 @@ jobs:
       ignore-unfixed: ${{ inputs.ignore-unfixed }}
       fail-on-findings: ${{ inputs.fail-on-findings }}
       upload-sarif: true
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
