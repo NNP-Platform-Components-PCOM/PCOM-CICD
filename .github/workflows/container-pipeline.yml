@@ -1,0 +1,95 @@
+name: Container Pipeline (Reusable)
+
+# Reusable end-to-end pipeline for container images: build & publish, then
+# scan. Image repositories call this workflow with a few inputs and inherit
+# the whole build/publish/sign/scan flow. Publishing happens on every event
+# except pull requests, which build and scan without pushing.
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: 'Image repository name (published under the org namespace).'
+        required: true
+        type: string
+      image-version:
+        description: 'Primary human-readable tag (e.g. 22.04-v1).'
+        required: false
+        type: string
+        default: ''
+      context:
+        required: false
+        type: string
+        default: '.'
+      dockerfile:
+        required: false
+        type: string
+        default: ./Dockerfile
+      platforms:
+        required: false
+        type: string
+        default: linux/amd64,linux/arm64
+      build-args:
+        required: false
+        type: string
+        default: ''
+      registry:
+        required: false
+        type: string
+        default: ghcr.io
+      runner:
+        required: false
+        type: string
+        default: ubuntu-latest
+      severity:
+        required: false
+        type: string
+        default: CRITICAL,HIGH
+      ignore-unfixed:
+        required: false
+        type: boolean
+        default: true
+      fail-on-findings:
+        description: 'Fail the run when the scan finds matching vulnerabilities.'
+        required: false
+        type: boolean
+        default: false
+      sign:
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/container-build.yml
+    with:
+      runner: ${{ inputs.runner }}
+      image-name: ${{ inputs.image-name }}
+      registry: ${{ inputs.registry }}
+      context: ${{ inputs.context }}
+      dockerfile: ${{ inputs.dockerfile }}
+      platforms: ${{ inputs.platforms }}
+      image-version: ${{ inputs.image-version }}
+      build-args: ${{ inputs.build-args }}
+      push: ${{ github.event_name != 'pull_request' }}
+      sign: ${{ inputs.sign }}
+
+  scan:
+    needs: build
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    uses: ./.github/workflows/container-scan.yml
+    with:
+      scan-target: ${{ needs.build.outputs.scan-target }}
+      registry: ${{ inputs.registry }}
+      image-artifact: ${{ needs.build.outputs.image-artifact }}
+      severity: ${{ inputs.severity }}
+      ignore-unfixed: ${{ inputs.ignore-unfixed }}
+      fail-on-findings: ${{ inputs.fail-on-findings }}
+      upload-sarif: true

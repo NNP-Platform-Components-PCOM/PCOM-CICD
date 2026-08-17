@@ -1,0 +1,199 @@
+name: Container Build (Reusable)
+
+# Reusable workflow: build a container image with Buildx and publish it to a
+# registry (GHCR by default). On pull requests the image is built but not
+# published; instead it is exported as an artifact so the scan workflow can
+# inspect it. Published images are signed keyless with cosign (GitHub OIDC),
+# and carry SBOM + provenance attestations.
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: 'Runner label to build on.'
+        required: false
+        type: string
+        default: ubuntu-latest
+      image-name:
+        description: 'Image repository name (published under the org namespace).'
+        required: true
+        type: string
+      registry:
+        description: 'Target registry hostname.'
+        required: false
+        type: string
+        default: ghcr.io
+      context:
+        description: 'Build context path.'
+        required: false
+        type: string
+        default: '.'
+      dockerfile:
+        description: 'Path to the Dockerfile.'
+        required: false
+        type: string
+        default: ./Dockerfile
+      platforms:
+        description: 'Target platforms for the published (multi-arch) image.'
+        required: false
+        type: string
+        default: linux/amd64,linux/arm64
+      image-version:
+        description: 'Primary human-readable tag (e.g. 22.04-v1). Optional.'
+        required: false
+        type: string
+        default: ''
+      build-args:
+        description: 'Docker build arguments (multiline KEY=VALUE pairs).'
+        required: false
+        type: string
+        default: ''
+      push:
+        description: 'Publish the image to the registry.'
+        required: false
+        type: boolean
+        default: true
+      sign:
+        description: 'Sign published images with cosign (keyless).'
+        required: false
+        type: boolean
+        default: true
+
+    outputs:
+      image:
+        description: 'Fully-qualified image repository (no tag).'
+        value: ${{ jobs.build.outputs.image }}
+      digest:
+        description: 'Digest of the published manifest.'
+        value: ${{ jobs.build.outputs.digest }}
+      version:
+        description: 'Primary resolved tag.'
+        value: ${{ jobs.build.outputs.version }}
+      scan-target:
+        description: 'Reference the scan workflow should inspect.'
+        value: ${{ jobs.build.outputs.scan-target }}
+      image-artifact:
+        description: 'Name of the exported image tarball artifact (empty when published).'
+        value: ${{ jobs.build.outputs.image-artifact }}
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    outputs:
+      image: ${{ steps.ref.outputs.image }}
+      digest: ${{ steps.publish.outputs.digest }}
+      version: ${{ steps.meta.outputs.version }}
+      scan-target: ${{ steps.target.outputs.scan-target }}
+      image-artifact: ${{ steps.ref.outputs.image-artifact }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve image reference
+        id: ref
+        run: |
+          image="${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs.image-name }}"
+          image="$(printf '%s' "$image" | tr '[:upper:]' '[:lower:]')"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          if [ "${{ inputs.push }}" = "true" ]; then
+            echo "image-artifact=" >> "$GITHUB_OUTPUT"
+          else
+            echo "image-artifact=image-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log in to the registry
+        if: inputs.push
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.ref.outputs.image }}
+          tags: |
+            type=raw,value=${{ inputs.image-version }},enable=${{ inputs.image-version != '' }}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-
+
+      - name: Build and publish (multi-arch)
+        id: publish
+        if: inputs.push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ inputs.build-args }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Build for scan (no publish)
+        if: ${{ !inputs.push }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ inputs.build-args }}
+          outputs: type=docker,dest=/tmp/image.tar
+
+      - name: Export image artifact
+        if: ${{ !inputs.push }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.ref.outputs.image-artifact }}
+          path: /tmp/image.tar
+          retention-days: 1
+
+      - name: Resolve scan target
+        id: target
+        run: |
+          if [ "${{ inputs.push }}" = "true" ]; then
+            echo "scan-target=${{ steps.ref.outputs.image }}@${{ steps.publish.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          else
+            primary="$(printf '%s' "${{ steps.meta.outputs.tags }}" | head -n1)"
+            echo "scan-target=$primary" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install cosign
+        if: ${{ inputs.push && inputs.sign }}
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign published image (keyless)
+        if: ${{ inputs.push && inputs.sign }}
+        env:
+          REF: ${{ steps.ref.outputs.image }}@${{ steps.publish.outputs.digest }}
+        run: cosign sign --yes "$REF"
+
+      - name: Job summary
+        run: |
+          {
+            echo "### Container build"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Image | \`${{ steps.ref.outputs.image }}\` |"
+            echo "| Primary tag | \`${{ steps.meta.outputs.version }}\` |"
+            echo "| Published | ${{ inputs.push }} |"
+            echo "| Digest | \`${{ steps.publish.outputs.digest }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
