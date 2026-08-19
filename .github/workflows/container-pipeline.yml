@@ -40,6 +40,10 @@ on:
       namespace:
         required: false
         type: string
+        default: nubonativesolution
+      registry-username:
+        required: false
+        type: string
         default: nubons
       runner:
         required: false
@@ -79,6 +83,7 @@ jobs:
       image-name: ${{ inputs.image-name }}
       registry: ${{ inputs.registry }}
       namespace: ${{ inputs.namespace }}
+      registry-username: ${{ inputs.registry-username }}
       context: ${{ inputs.context }}
       dockerfile: ${{ inputs.dockerfile }}
       platforms: ${{ inputs.platforms }}
@@ -99,6 +104,7 @@ jobs:
       scan-target: ${{ needs.build.outputs.scan-target }}
       registry: ${{ inputs.registry }}
       namespace: ${{ inputs.namespace }}
+      registry-username: ${{ inputs.registry-username }}
       image-artifact: ${{ needs.build.outputs.image-artifact }}
       severity: ${{ inputs.severity }}
       ignore-unfixed: ${{ inputs.ignore-unfixed }}

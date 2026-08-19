@@ -15,7 +15,7 @@ build logic, so the whole set of images shares one audited build/scan pipeline.
 Publishing happens on every event except pull requests, which build and scan
 without pushing (the image is scanned from an exported tarball).
 
-Images are published to `docker.io/nubons/<image-name>`.
+Images are published to `docker.io/nubonativesolution/<image-name>`.
 
 ## Required secret
 

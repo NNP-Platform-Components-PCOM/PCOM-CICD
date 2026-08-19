@@ -24,7 +24,12 @@ on:
         type: string
         default: docker.io
       namespace:
-        description: 'Registry namespace / account the image is published under.'
+        description: 'Registry namespace / org the image is published under.'
+        required: false
+        type: string
+        default: nubonativesolution
+      registry-username:
+        description: 'Registry login username (a member of the namespace org).'
         required: false
         type: string
         default: nubons
@@ -126,7 +131,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ${{ inputs.registry }}
-          username: ${{ inputs.namespace }}
+          username: ${{ inputs.registry-username }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Derive image metadata
